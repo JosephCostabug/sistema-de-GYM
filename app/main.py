@@ -1,7 +1,7 @@
 """Ponto de entrada da API FastAPI e composição das rotas do ginásio."""
 
-from contextlib import asynccontextmanager
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -14,9 +14,10 @@ from app.routes.planos import router as planos_router
 from app.routes.presencas import router as presencas_router
 from app.routes.saude import router as saude_router
 
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    """Cria tabelas e dados de demonstração antes de aceitar pedidos."""
+    """Valida configuração e banco antes de aceitar tráfego."""
     if APP_ENV == "production":
         segredo = os.getenv("ADMIN_TOKEN_SECRET", "")
         if len(segredo.encode("utf-8")) < 32:

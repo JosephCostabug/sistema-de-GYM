@@ -23,8 +23,17 @@ def readiness() -> dict[str, str]:
             connection.execute(text("SELECT 1"))
         if APP_ENV == "production":
             tabelas = set(inspect(engine).get_table_names())
-            if "alembic_version" not in tabelas:
-                raise HTTPException(status_code=503, detail="Banco sem migrations aplicadas.")
+            obrigatorias = {
+                "alembic_version",
+                "ginasios",
+                "planos",
+                "clientes",
+                "credenciais",
+                "presencas",
+                "contas_admin",
+            }
+            if obrigatorias - tabelas:
+                raise HTTPException(status_code=503, detail="Banco sem schema completo.")
     except SQLAlchemyError as erro:
         raise HTTPException(status_code=503, detail="Banco de dados indisponível.") from erro
     return {"status": "ready"}
