@@ -193,15 +193,19 @@ Alembic controla o schema. Em produção, o servidor recusa iniciar se as migrat
 
 ## Deploy de produção
 
-1. Provisionar PostgreSQL gerido ou privado, com backups, utilizador exclusivo da aplicação e conexão TLS.
-2. Definir `APP_ENV=production`, `DATABASE_URL` com `sslmode=require` (ou validação mais forte) e `ADMIN_TOKEN_SECRET` com pelo menos 32 bytes num gestor de segredos. SQLite e o Compose de desenvolvimento são recusados no modo produção.
+1. Criar um projeto Supabase (ou outro PostgreSQL gerido), definir senha do banco e guardar as credenciais no gestor de segredos. No Supabase, obter a URI em `Project Settings > Database`; usar a URI PostgreSQL do banco, não as chaves `anon` ou `service_role` da API.
+2. No Supabase, copiar a URI exata de `Connect > Session pooler` e executar `python scripts/configurar_supabase.py`; a senha é lida sem eco e a URI fica apenas em `.env`. Em deploy, configure `APP_ENV=production`, `DATABASE_URL` com `sslmode=require` (ou validação mais forte) e `ADMIN_TOKEN_SECRET` com pelo menos 32 bytes no gestor de segredos. SQLite e o Compose de desenvolvimento são recusados no modo produção.
 3. Instalar `requirements.txt` e aplicar `python -m alembic upgrade head` antes de iniciar a API.
 4. Criar a primeira conta admin com `python scripts/criar_admin.py`; em produção é obrigatório email real e senha com pelo menos 16 caracteres.
 5. Iniciar a API atrás de proxy HTTPS, firewall e processo supervisionado, por exemplo `uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2`. Swagger/OpenAPI fica desativado no modo produção.
 6. Criar ginásios com `POST /ginasios` e planos com `POST /planos`; o modo produção não insere clientes, credenciais ou dados de demonstração.
 7. Configurar monitoramento de `/health/live` e `/health/ready`, retenção de logs, alarmes, backup e teste de restauração, limitação de tentativas de login no proxy/WAF e políticas de proteção de dados.
 
-Ainda é necessário configurar e testar esses serviços externos no ambiente de destino. A conexão PostgreSQL real, certificado TLS/proxy, backup e restauração, rate limit distribuído no proxy/WAF, observabilidade e requisitos legais para dados biométricos não podem ser validados neste workspace local.
+Ao copiar a URI padrão do Supabase (`postgresql://`), a aplicação converte-a para Psycopg 3. Para o pooler transacional Supabase, desativa prepared statements automaticamente.
+
+Ainda é necessário criar/autenticar o projeto Supabase, colocar a URI e os segredos no ambiente local/deploy e testar essa conexão real. Certificado TLS/proxy, backup e restauração, rate limit distribuído no proxy/WAF, observabilidade e requisitos legais para dados biométricos também dependem do ambiente de destino.
+
+Depois de confirmar que nenhum cliente usa chaves antigas, desative a chave legada `service_role` em `Project Settings > API Keys`; a API deste projeto conecta diretamente ao PostgreSQL e não precisa de API key Supabase. Nunca use a chave `service_role` no `.env` desta aplicação.
 
 Para parar o PostgreSQL sem apagar dados:
 

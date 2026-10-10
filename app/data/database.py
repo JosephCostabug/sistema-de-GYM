@@ -34,14 +34,23 @@ if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL é obrigatória em produção.")
     DATABASE_URL = "sqlite:///./gym_presence.db"
 
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+
 if APP_ENV == "production":
-    if not DATABASE_URL.startswith(("postgresql://", "postgresql+psycopg://")):
+    if not DATABASE_URL.startswith("postgresql+psycopg://"):
         raise RuntimeError("Produção exige PostgreSQL; SQLite é apenas local/teste.")
     sslmode = parse_qs(urlsplit(DATABASE_URL).query).get("sslmode", [""])[0]
     if sslmode not in {"require", "verify-ca", "verify-full"}:
         raise RuntimeError("Configure sslmode=require (ou validação mais forte) em produção.")
 
 engine_options = {"pool_pre_ping": True}
+host = urlsplit(DATABASE_URL).hostname or ""
+if ".pooler." in host:
+    # Evita prepared statements incompatíveis com o pooler transacional do Supabase.
+    engine_options["connect_args"] = {"prepare_threshold": None}
 if DATABASE_URL.startswith("sqlite"):
     # SQLite é útil para testes locais; PostgreSQL usa pool normal do SQLAlchemy.
     engine_options["connect_args"] = {"check_same_thread": False}
