@@ -36,15 +36,22 @@ def verificar_senha(senha: str, password_hash: str) -> bool:
     """Compara senha e hash em tempo constante, rejeitando formatos desconhecidos."""
     try:
         algoritmo, n, r, p, salt_hex, digest_hex = password_hash.split("$")
-        if algoritmo != "scrypt":
+        if (
+            algoritmo != "scrypt"
+            or int(n) != _SCRYPT_N
+            or int(r) != _SCRYPT_R
+            or int(p) != _SCRYPT_P
+            or len(bytes.fromhex(salt_hex)) != 16
+            or len(bytes.fromhex(digest_hex)) != 64
+        ):
             return False
         digest = hashlib.scrypt(
             senha.encode("utf-8"),
             salt=bytes.fromhex(salt_hex),
-            n=int(n),
-            r=int(r),
-            p=int(p),
-            dklen=len(bytes.fromhex(digest_hex)),
+            n=_SCRYPT_N,
+            r=_SCRYPT_R,
+            p=_SCRYPT_P,
+            dklen=64,
         )
     except (ValueError, TypeError):
         return False

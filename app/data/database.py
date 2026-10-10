@@ -1,8 +1,7 @@
-"""Modelos relacionais e configuração da conexão com o banco de dados."""
+"""Modelos e conexão SQLite local da aplicação."""
 
 import os
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
 
 from dotenv import load_dotenv
 from sqlalchemy import (
@@ -16,49 +15,58 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     create_engine,
+    event,
+    text,
 )
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.data.paths import caminho_banco_padrao
 
-# Permite configuração local por .env sem substituir variáveis já exportadas.
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(PROJECT_ROOT / ".env")
 
 APP_ENV = os.getenv("APP_ENV", "development").strip().lower()
-if APP_ENV not in {"development", "test", "production"}:
-    raise RuntimeError("APP_ENV deve ser development, test ou production.")
+if APP_ENV not in {"development", "test"}:
+    raise RuntimeError(
+        "Este projeto está configurado para SQLite local; use APP_ENV=development ou test."
+    )
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    if APP_ENV == "production":
-        raise RuntimeError("DATABASE_URL é obrigatória em produção.")
-    DATABASE_URL = "sqlite:///./gym_presence.db"
+    DATABASE_URL = URL.create("sqlite", database=str(caminho_banco_padrao()))
+database_url = make_url(DATABASE_URL)
+if database_url.drivername not in {"sqlite", "sqlite+pysqlite"}:
+    raise RuntimeError("Este projeto usa SQLite. DATABASE_URL deve começar com sqlite://.")
 
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
-elif DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+if database_url.database not in {None, "", ":memory:"}:
+    database_path = Path(database_url.database).expanduser()
+    if not database_path.is_absolute():
+        database_path = (PROJECT_ROOT / database_path).resolve()
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    database_url = database_url.set(database=str(database_path))
 
-if APP_ENV == "production":
-    if not DATABASE_URL.startswith("postgresql+psycopg://"):
-        raise RuntimeError("Produção exige PostgreSQL; SQLite é apenas local/teste.")
-    sslmode = parse_qs(urlsplit(DATABASE_URL).query).get("sslmode", [""])[0]
-    if sslmode not in {"require", "verify-ca", "verify-full"}:
-        raise RuntimeError("Configure sslmode=require (ou validação mais forte) em produção.")
+DATABASE_URL = database_url.render_as_string(hide_password=False)
+engine_options: dict = {"pool_pre_ping": True}
+if database_url.database in {None, "", ":memory:"}:
+    engine_options["poolclass"] = StaticPool
+engine_options["connect_args"] = {"check_same_thread": False, "timeout": 10}
 
-engine_options = {"pool_pre_ping": True}
-host = urlsplit(DATABASE_URL).hostname or ""
-if ".pooler." in host:
-    # Evita prepared statements incompatíveis com o pooler transacional do Supabase.
-    engine_options["connect_args"] = {"prepare_threshold": None}
-if DATABASE_URL.startswith("sqlite"):
-    # SQLite é útil para testes locais; PostgreSQL usa pool normal do SQLAlchemy.
-    engine_options["connect_args"] = {"check_same_thread": False}
-    if ":memory:" in DATABASE_URL or DATABASE_URL.endswith("sqlite://"):
-        engine_options["poolclass"] = StaticPool
-
-engine = create_engine(DATABASE_URL, **engine_options)
+engine = create_engine(database_url, **engine_options)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
+
+
+@event.listens_for(engine, "connect")
+def configurar_sqlite(conexao, _registro) -> None:
+    """Ativa chaves estrangeiras e reduz falhas breves por banco ocupado."""
+    cursor = conexao.cursor()
+    cursor.execute("PRAGMA foreign_keys = ON")
+    cursor.execute("PRAGMA busy_timeout = 10000")
+    if database_url.database not in {None, "", ":memory:"}:
+        cursor.execute("PRAGMA journal_mode = WAL")
+        cursor.execute("PRAGMA synchronous = NORMAL")
+    cursor.close()
 
 
 class Base(DeclarativeBase):
@@ -124,6 +132,12 @@ class AttendanceRecord(Base):
     __tablename__ = "presencas"
     __table_args__ = (
         Index("ix_presencas_cliente_entrada", "cliente_id", "entrada_em"),
+        Index(
+            "uq_presencas_entrada_aberta_cliente",
+            "cliente_id",
+            unique=True,
+            sqlite_where=text("saida_em IS NULL"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(80), primary_key=True)

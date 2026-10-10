@@ -3,7 +3,7 @@
 from datetime import datetime, time, timedelta, timezone
 from uuid import uuid4
 
-from sqlalchemy import func, inspect, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.data.database import (
@@ -29,31 +29,16 @@ class AdministradorJaExiste(Exception):
     pass
 
 
+class EntradaJaAberta(Exception):
+    pass
+
+
 def novo_id() -> str:
     return uuid4().hex[:12]
 
 
 def inicializar() -> None:
-    """Cria o schema e insere dados exemplo sem sobrescrever registros existentes."""
-    if APP_ENV == "production":
-        tabelas = set(inspect(engine).get_table_names())
-        obrigatorias = {
-            "alembic_version",
-            "ginasios",
-            "planos",
-            "clientes",
-            "credenciais",
-            "presencas",
-            "contas_admin",
-        }
-        faltantes = obrigatorias - tabelas
-        if faltantes:
-            raise RuntimeError(
-                "Schema incompleto; execute 'alembic upgrade head'. "
-                f"Tabelas em falta: {', '.join(sorted(faltantes))}."
-            )
-        return
-
+    """Cria tabelas SQLite e semeia dados de exemplo apenas em desenvolvimento."""
     Base.metadata.create_all(bind=engine)
     if APP_ENV != "development":
         return
@@ -352,26 +337,36 @@ def contar_visitas(cliente_id: str, desde: datetime) -> int:
 
 
 def criar_presenca(presenca: Presenca) -> Presenca:
-    with SessionLocal.begin() as session:
-        session.add(
-            AttendanceRecord(
-                id=presenca.id,
-                cliente_id=presenca.cliente_id,
-                ginasio_id=presenca.ginasio_id,
-                metodo=presenca.metodo,
-                entrada_em=_para_utc(presenca.entrada_em),
-                saida_em=None,
+    try:
+        with SessionLocal.begin() as session:
+            session.add(
+                AttendanceRecord(
+                    id=presenca.id,
+                    cliente_id=presenca.cliente_id,
+                    ginasio_id=presenca.ginasio_id,
+                    metodo=presenca.metodo,
+                    entrada_em=_para_utc(presenca.entrada_em),
+                    saida_em=None,
+                )
             )
-        )
+    except IntegrityError as erro:
+        raise EntradaJaAberta from erro
     return presenca
 
 
 def fechar_presenca(presenca_id: str, saida_em: datetime) -> Presenca | None:
     with SessionLocal.begin() as session:
-        registro = session.get(AttendanceRecord, presenca_id)
-        if registro is None:
+        resultado = session.execute(
+            update(AttendanceRecord)
+            .where(
+                AttendanceRecord.id == presenca_id,
+                AttendanceRecord.saida_em.is_(None),
+            )
+            .values(saida_em=_para_utc(saida_em))
+        )
+        if resultado.rowcount == 0:
             return None
-        registro.saida_em = _para_utc(saida_em)
+        registro = session.get(AttendanceRecord, presenca_id)
         resultado = _presenca(registro)
     return resultado
 

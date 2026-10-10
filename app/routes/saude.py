@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.data.database import APP_ENV, engine
+from app.data.database import Base, engine
 
 router = APIRouter(prefix="/health", tags=["Saúde"])
 
@@ -17,23 +17,14 @@ def liveness() -> dict[str, str]:
 
 @router.get("/ready", include_in_schema=False)
 def readiness() -> dict[str, str]:
-    """Confirma conexão e schema antes do balanceador enviar tráfego."""
+    """Confirma conexão e presença do schema SQLite."""
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
-        if APP_ENV == "production":
-            tabelas = set(inspect(engine).get_table_names())
-            obrigatorias = {
-                "alembic_version",
-                "ginasios",
-                "planos",
-                "clientes",
-                "credenciais",
-                "presencas",
-                "contas_admin",
-            }
-            if obrigatorias - tabelas:
-                raise HTTPException(status_code=503, detail="Banco sem schema completo.")
+        tabelas = set(inspect(engine).get_table_names())
+        obrigatorias = set(Base.metadata.tables)
+        if obrigatorias - tabelas:
+            raise HTTPException(status_code=503, detail="Schema SQLite incompleto.")
     except SQLAlchemyError as erro:
         raise HTTPException(status_code=503, detail="Banco de dados indisponível.") from erro
     return {"status": "ready"}

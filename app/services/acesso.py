@@ -1,8 +1,10 @@
 """Regras de autorização de entrada e cálculo de utilização dos planos."""
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from app.data import store
+from app.data.store import EntradaJaAberta
 from app.models.schemas import Cliente, MetodoAcesso, Plano, Presenca
 
 
@@ -44,7 +46,7 @@ def contar_visitas(cliente_id: str, desde: datetime) -> int:
     return store.contar_visitas(cliente_id, desde)
 
 
-def uso_do_plano(cliente: Cliente, plano: Plano, agora: datetime) -> dict:
+def uso_do_plano(cliente: Cliente, plano: Plano, agora: datetime) -> dict[str, Any]:
     visitas_semana = contar_visitas(cliente.id, _inicio_semana(agora))
     visitas_mes = contar_visitas(cliente.id, _inicio_mes(agora))
     return {
@@ -97,7 +99,12 @@ def validar_entrada(cliente: Cliente, plano: Plano, ginasio_id: str, agora: date
         raise AcessoNegado("Limite mensal de visitas do plano já foi atingido.")
 
 
-def marcar(ginasio_id: str, metodo: MetodoAcesso, credencial: str, tipo: str | None) -> dict:
+def marcar(
+    ginasio_id: str,
+    metodo: MetodoAcesso,
+    credencial: str,
+    tipo: str | None,
+) -> dict[str, Any]:
     """Regista uma entrada ou fecha a presença aberta do cliente."""
     agora = datetime.now(timezone.utc)
     ginasio = store.obter_ginasio(ginasio_id)
@@ -120,7 +127,12 @@ def marcar(ginasio_id: str, metodo: MetodoAcesso, credencial: str, tipo: str | N
             metodo=metodo,
             entrada_em=agora,
         )
-        store.criar_presenca(presenca)
+        try:
+            store.criar_presenca(presenca)
+        except EntradaJaAberta as erro:
+            raise AcessoNegado(
+                "Já existe uma entrada aberta. Marque a saída primeiro."
+            ) from erro
         uso = uso_do_plano(cliente, plano, agora)
         return {
             "autorizado": True,

@@ -1,12 +1,10 @@
 """Ponto de entrada da API FastAPI e composição das rotas do ginásio."""
 
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from app.data import store
-from app.data.database import APP_ENV
 from app.routes.administracao import router as administracao_router
 from app.routes.clientes import router as clientes_router
 from app.routes.ginasios import router as ginasios_router
@@ -17,11 +15,7 @@ from app.routes.saude import router as saude_router
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    """Valida configuração e banco antes de aceitar tráfego."""
-    if APP_ENV == "production":
-        segredo = os.getenv("ADMIN_TOKEN_SECRET", "")
-        if len(segredo.encode("utf-8")) < 32:
-            raise RuntimeError("ADMIN_TOKEN_SECRET deve ter pelo menos 32 bytes em produção.")
+    """Cria as tabelas e os dados de exemplo antes de aceitar pedidos."""
     store.inicializar()
     yield
 
@@ -30,9 +24,6 @@ app = FastAPI(
     title="Gym Presence",
     description="Marcação de presença em ginásio por biometria, face, cartão e outros métodos, limitada pelo plano do cliente.",
     lifespan=lifespan,
-    docs_url=None if APP_ENV == "production" else "/docs",
-    redoc_url=None if APP_ENV == "production" else "/redoc",
-    openapi_url=None if APP_ENV == "production" else "/openapi.json",
 )
 
 app.include_router(ginasios_router)

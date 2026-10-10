@@ -1,6 +1,6 @@
 """Rotas de consulta, criação e personalização de planos."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.data import store
 from app.data.store import RegistroDuplicado
@@ -15,7 +15,7 @@ def listar_planos():
     return store.listar_planos()
 
 
-@router.post("")
+@router.post("", status_code=status.HTTP_201_CREATED)
 def criar_plano(dados: PlanoCreate, _: None = Depends(exigir_administrador)):
     validar_ginasios(dados.ginasios_permitidos)
     plano = Plano(id=f"plano-{store.novo_id()}", **dados.model_dump())
