@@ -1,0 +1,103 @@
+:root {
+  --bg: #0c1117;
+  --panel: #151c25;
+  --line: #2a3646;
+  --text: #e8eef6;
+  --muted: #93a1b3;
+  --accent: #3ee0a2;
+  --warn: #f0b429;
+  --bad: #ff6b6b;
+  font-family: "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #1a2736, var(--bg) 42%);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 24px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 32px 20px;
+}
+
+.kiosk, .side section {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 24px;
+}
+
+.eyebrow { color: var(--accent); letter-spacing: 0.12em; text-transform: uppercase; font-size: 12px; margin: 0; }
+h1 { margin: 8px 0 6px; font-size: 32px; }
+h2 { margin: 0 0 12px; font-size: 18px; }
+.sub, label, legend { color: var(--muted); }
+
+label, fieldset { display: block; margin: 16px 0; border: 0; padding: 0; }
+select, input {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #0f1620;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.methods { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.methods button, .actions button {
+  border: 1px solid var(--line);
+  background: #101820;
+  color: var(--text);
+  border-radius: 999px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+.methods button.active, .actions .primary {
+  background: var(--accent);
+  color: #062018;
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.resultado {
+  margin-top: 20px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #101820;
+}
+.resultado.ok { border-color: var(--accent); }
+.resultado.fail { border-color: var(--bad); }
+.resultado h3 { margin: 0 0 8px; }
+.muted { color: var(--muted); font-size: 14px; }
+
+.demo, .item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.demo button {
+  margin-top: 8px;
+  margin-right: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #0f1620;
+  color: var(--text);
+  cursor: pointer;
+}
+.side { display: flex; flex-direction: column; gap: 16px; }
+
+@media (max-width: 860px) {
+  .layout { grid-template-columns: 1fr; }
+}

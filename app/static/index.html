@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Terminal de Presença — Ginásio</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="layout">
+    <section class="kiosk">
+      <header>
+        <p class="eyebrow">Terminal de acesso</p>
+        <h1>Marcar presença</h1>
+        <p class="sub">Entrada e saída por biometria, face, cartão, PIN ou QR, com limites do plano.</p>
+      </header>
+
+      <label>
+        Ginásio
+        <select id="ginasio"></select>
+      </label>
+
+      <fieldset>
+        <legend>Método</legend>
+        <div class="methods" id="metodos"></div>
+      </fieldset>
+
+      <label>
+        Credencial do leitor
+        <input id="credencial" type="text" placeholder="Código lido pelo equipamento" autocomplete="off" />
+      </label>
+
+      <div class="actions">
+        <button type="button" class="primary" id="auto">Identificar (entrada/saída)</button>
+        <button type="button" id="entrada">Só entrada</button>
+        <button type="button" id="saida">Só saída</button>
+      </div>
+
+      <div id="resultado" class="resultado" hidden></div>
+    </section>
+
+    <aside class="side">
+      <section>
+        <h2>Clientes de demo</h2>
+        <div id="demos"></div>
+      </section>
+      <section>
+        <h2>Últimas presenças</h2>
+        <div id="historico" class="historico"></div>
+      </section>
+    </aside>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
