@@ -5,7 +5,7 @@ from typing import Any
 
 from app.data import store
 from app.data.store import EntradaJaAberta
-from app.models.schemas import Cliente, MetodoAcesso, Plano, Presenca
+from app.models.schemas import Cliente, Ginasio, MetodoAcesso, Plano, Presenca
 
 
 class AcessoNegado(Exception):
@@ -14,23 +14,23 @@ class AcessoNegado(Exception):
         super().__init__(motivo)
 
 
-def encontrar_cliente(metodo: MetodoAcesso, credencial: str) -> Cliente:
+def encontrar_cliente(metodo: MetodoAcesso, credencial: str, empresa_id: str) -> Cliente:
     codigo = credencial.strip()
-    cliente = store.cliente_por_credencial(metodo, codigo)
+    cliente = store.cliente_por_credencial(metodo, codigo, empresa_id)
     if cliente is not None:
         return cliente
     raise AcessoNegado("Credencial não reconhecida. Verifique o método e o código.")
 
 
-def plano_do_cliente(cliente: Cliente) -> Plano:
-    plano = store.obter_plano(cliente.plano_id)
+def plano_do_cliente(cliente: Cliente, empresa_id: str) -> Plano:
+    plano = store.obter_plano(cliente.plano_id, empresa_id)
     if plano is not None:
         return plano
     raise AcessoNegado("O cliente não tem um plano associado.")
 
 
-def presenca_aberta(cliente_id: str) -> Presenca | None:
-    return store.presenca_aberta(cliente_id)
+def presenca_aberta(cliente_id: str, empresa_id: str) -> Presenca | None:
+    return store.presenca_aberta(cliente_id, empresa_id)
 
 
 def _inicio_semana(momento: datetime) -> datetime:
@@ -42,13 +42,22 @@ def _inicio_mes(momento: datetime) -> datetime:
     return momento.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
-def contar_visitas(cliente_id: str, desde: datetime) -> int:
-    return store.contar_visitas(cliente_id, desde)
+def contar_visitas(cliente_id: str, empresa_id: str, desde: datetime) -> int:
+    return store.contar_visitas(cliente_id, empresa_id, desde)
 
 
-def uso_do_plano(cliente: Cliente, plano: Plano, agora: datetime) -> dict[str, Any]:
-    visitas_semana = contar_visitas(cliente.id, _inicio_semana(agora))
-    visitas_mes = contar_visitas(cliente.id, _inicio_mes(agora))
+def uso_do_plano(
+    cliente: Cliente,
+    plano: Plano,
+    agora: datetime,
+    empresa_id: str,
+) -> dict[str, Any]:
+    visitas_semana = contar_visitas(
+        cliente.id,
+        empresa_id,
+        _inicio_semana(agora),
+    )
+    visitas_mes = contar_visitas(cliente.id, empresa_id, _inicio_mes(agora))
     return {
         "visitas_semana": visitas_semana,
         "max_visitas_semana": plano.max_visitas_semana,
@@ -69,7 +78,13 @@ def uso_do_plano(cliente: Cliente, plano: Plano, agora: datetime) -> dict[str, A
     }
 
 
-def validar_entrada(cliente: Cliente, plano: Plano, ginasio_id: str, agora: datetime) -> None:
+def validar_entrada(
+    cliente: Cliente,
+    plano: Plano,
+    ginasio_id: str,
+    empresa_id: str,
+    agora: datetime,
+) -> None:
     if not cliente.ativo:
         raise AcessoNegado("Cliente inativo.")
     if not plano.ativo:
@@ -89,10 +104,10 @@ def validar_entrada(cliente: Cliente, plano: Plano, ginasio_id: str, agora: date
         raise AcessoNegado(
             f"Acesso só até às {plano.hora_fim.strftime('%H:%M')} com este plano."
         )
-    if presenca_aberta(cliente.id):
+    if presenca_aberta(cliente.id, empresa_id):
         raise AcessoNegado("Já existe uma entrada aberta. Marque a saída primeiro.")
 
-    uso = uso_do_plano(cliente, plano, agora)
+    uso = uso_do_plano(cliente, plano, agora, empresa_id)
     if plano.max_visitas_semana is not None and uso["visitas_semana"] >= plano.max_visitas_semana:
         raise AcessoNegado("Limite semanal de visitas do plano já foi atingido.")
     if plano.max_visitas_mes is not None and uso["visitas_mes"] >= plano.max_visitas_mes:
@@ -100,26 +115,25 @@ def validar_entrada(cliente: Cliente, plano: Plano, ginasio_id: str, agora: date
 
 
 def marcar(
-    ginasio_id: str,
+    ginasio: Ginasio,
     metodo: MetodoAcesso,
     credencial: str,
     tipo: str | None,
+    empresa_id: str,
 ) -> dict[str, Any]:
     """Regista uma entrada ou fecha a presença aberta do cliente."""
     agora = datetime.now(timezone.utc)
-    ginasio = store.obter_ginasio(ginasio_id)
-    if ginasio is None:
-        raise AcessoNegado("Ginásio não encontrado.")
+    ginasio_id = ginasio.id
 
-    cliente = encontrar_cliente(metodo, credencial)
-    plano = plano_do_cliente(cliente)
-    aberta = presenca_aberta(cliente.id)
+    cliente = encontrar_cliente(metodo, credencial, empresa_id)
+    plano = plano_do_cliente(cliente, empresa_id)
+    aberta = presenca_aberta(cliente.id, empresa_id)
 
     if tipo is None:
         tipo = "saida" if aberta else "entrada"
 
     if tipo == "entrada":
-        validar_entrada(cliente, plano, ginasio_id, agora)
+        validar_entrada(cliente, plano, ginasio_id, empresa_id, agora)
         presenca = Presenca(
             id=store.novo_id(),
             cliente_id=cliente.id,
@@ -128,12 +142,12 @@ def marcar(
             entrada_em=agora,
         )
         try:
-            store.criar_presenca(presenca)
+            store.criar_presenca(presenca, empresa_id)
         except EntradaJaAberta as erro:
             raise AcessoNegado(
                 "Já existe uma entrada aberta. Marque a saída primeiro."
             ) from erro
-        uso = uso_do_plano(cliente, plano, agora)
+        uso = uso_do_plano(cliente, plano, agora, empresa_id)
         return {
             "autorizado": True,
             "tipo": "entrada",
@@ -149,7 +163,7 @@ def marcar(
     if tipo == "saida":
         if aberta is None:
             raise AcessoNegado("Não há entrada aberta para marcar saída.")
-        fechada = store.fechar_presenca(aberta.id, agora)
+        fechada = store.fechar_presenca(aberta.id, empresa_id, agora)
         if fechada is None:
             raise AcessoNegado("A entrada não está mais aberta.")
         minutos = int((fechada.saida_em - fechada.entrada_em).total_seconds() // 60)
@@ -171,7 +185,7 @@ def marcar(
             "saida_em": fechada.saida_em.isoformat(timespec="seconds"),
             "duracao_minutos": minutos,
             "aviso": aviso,
-            "uso_plano": uso_do_plano(cliente, plano, agora),
+            "uso_plano": uso_do_plano(cliente, plano, agora, empresa_id),
         }
 
     raise AcessoNegado("Tipo de marcação inválido. Use entrada ou saida.")

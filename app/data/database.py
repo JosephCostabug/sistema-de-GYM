@@ -73,10 +73,21 @@ class Base(DeclarativeBase):
     pass
 
 
+class CompanyRecord(Base):
+    __tablename__ = "empresas"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    nome: Mapped[str] = mapped_column(String(160), nullable=False)
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    telefone: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    endereco: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+
+
 class GymRecord(Base):
     __tablename__ = "ginasios"
 
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), nullable=False, index=True)
     nome: Mapped[str] = mapped_column(String(160), nullable=False)
     endereco: Mapped[str] = mapped_column(String(300), nullable=False, default="")
 
@@ -85,6 +96,7 @@ class PlanRecord(Base):
     __tablename__ = "planos"
 
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), nullable=False, index=True)
     nome: Mapped[str] = mapped_column(String(100), nullable=False)
     descricao: Mapped[str] = mapped_column(String(1000), nullable=False, default="")
     max_visitas_semana: Mapped[int | None] = mapped_column(Integer)
@@ -99,10 +111,14 @@ class PlanRecord(Base):
 
 class ClientRecord(Base):
     __tablename__ = "clientes"
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "email", name="uq_clientes_empresa_email"),
+    )
 
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), nullable=False, index=True)
     nome: Mapped[str] = mapped_column(String(120), nullable=False)
-    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
     telefone: Mapped[str] = mapped_column(String(80), nullable=False, default="")
     plano_id: Mapped[str] = mapped_column(ForeignKey("planos.id"), nullable=False)
     assinatura_inicio: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -117,9 +133,12 @@ class ClientRecord(Base):
 
 class CredentialRecord(Base):
     __tablename__ = "credenciais"
-    __table_args__ = (UniqueConstraint("metodo", "codigo", name="uq_credencial_metodo_codigo"),)
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "metodo", "codigo", name="uq_credencial_empresa_metodo_codigo"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), nullable=False, index=True)
     cliente_id: Mapped[str] = mapped_column(
         ForeignKey("clientes.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -141,6 +160,7 @@ class AttendanceRecord(Base):
     )
 
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), nullable=False, index=True)
     cliente_id: Mapped[str] = mapped_column(ForeignKey("clientes.id"), nullable=False)
     ginasio_id: Mapped[str] = mapped_column(ForeignKey("ginasios.id"), nullable=False)
     metodo: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -154,6 +174,7 @@ class AdminAccountRecord(Base):
     __tablename__ = "contas_admin"
 
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), nullable=False, index=True)
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

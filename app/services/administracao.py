@@ -7,6 +7,7 @@ import json
 import os
 import secrets
 import time
+from dataclasses import dataclass
 
 from fastapi import Header, HTTPException, status
 
@@ -16,6 +17,12 @@ _SCRYPT_N = 2**14
 _SCRYPT_R = 8
 _SCRYPT_P = 1
 _TOKEN_TTL_SECONDS = 60 * 60
+
+
+@dataclass(frozen=True)
+class AdminContext:
+    id: str
+    empresa_id: str
 
 
 def gerar_hash_senha(senha: str) -> str:
@@ -102,11 +109,13 @@ def validar_token(token: str | None) -> str:
 
 def exigir_administrador(
     x_admin_token: str | None = Header(default=None),
-) -> None:
-    """Protege rotas administrativas com token de uma conta ativa."""
+) -> AdminContext:
+    """Valida o token e devolve o tenant da conta administrativa."""
     admin_id = validar_token(x_admin_token)
-    if not store.admin_ativo(admin_id):
+    admin = store.obter_admin_por_id(admin_id)
+    if admin is None or not admin["ativo"]:
         raise _token_invalido()
+    return AdminContext(id=admin["id"], empresa_id=admin["empresa_id"])
 
 
 def _assinar(conteudo: str, segredo: str) -> str:

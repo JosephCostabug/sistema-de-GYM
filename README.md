@@ -1,118 +1,108 @@
-# Gym Presence API
+# G7M
 
-Backend REST para gerir ginásios, planos, clientes, assinaturas e presenças. O projeto usa FastAPI, SQLAlchemy e **SQLite local**. Não inclui interface própria; a documentação interativa fica no Swagger.
+Sistema multiempresa G7M (anteriormente Gym Presence) para gestão de ginásios, planos, clientes, assinaturas e presenças. O frontend está em `frontend/`; `/docs` contém a documentação interativa da API FastAPI.
 
-## 1. O que esta aplicação faz
+Para entender o fluxo full-stack, as relações entre dados, os endpoints e os limites operacionais, consulte [FLUXO_DO_SISTEMA.md](./FLUXO_DO_SISTEMA.md).
 
-- Mantém ginásios e planos com regras de acesso.
-- Regista clientes, assinaturas e credenciais de acesso.
-- Autoriza entradas com base em estado, período, horário, dias, ginásios e limites de visitas.
-- Regista entrada e saída e expõe o histórico para administradores.
-- Autentica administradores com senha `scrypt` e token HMAC com validade de uma hora.
-- Guarda os dados num arquivo SQLite persistente e permite gerar backups consistentes.
+## Início rápido
 
-## 2. Limites importantes
-
-SQLite é apropriado para desenvolvimento e uma instalação pequena num único servidor. O arquivo não deve ser compartilhado por várias instâncias da API, armazenado em pasta de rede ou sincronizado pelo OneDrive enquanto há escrita. Para alta concorrência, múltiplos servidores, failover ou alta disponibilidade, será necessário migrar para um banco servidor e reavaliar a arquitetura.
-
-O projeto Supabase criado durante a configuração anterior **não é usado pela aplicação**. O workspace não o apaga. Confira o painel e remova esse projeto se não quiser mantê-lo; confirme antes se há cobrança ou dados que queira preservar.
-
-## 3. Requisitos e estrutura
-
-- Python 3.10 ou superior
-- `pip`
-- Windows, macOS ou Linux
-
-Use somente `.venv` como ambiente virtual. A estrutura principal é:
+Com a API em execução, use:
 
 ```text
-app/
-  data/       modelos SQLAlchemy, caminho local e repositório
-  models/     schemas e validação Pydantic
-  routes/     endpoints HTTP
-  services/   regras de acesso e autenticação
-scripts/      configuração SQLite, admin e backup
- tests/       testes HTTP com SQLite em memória
+Base URL: http://127.0.0.1:8000
+Swagger:  http://127.0.0.1:8000/docs
+OpenAPI:  http://127.0.0.1:8000/openapi.json
 ```
 
-## 4. Instalação no Windows
+O banco ativo fica em `%LOCALAPPDATA%\GymPresence\gym_presence.db` no Windows ou `~/.local/share/gym-presence/gym_presence.db` em macOS/Linux. Uma instalação nova não cria contas ou dados de demonstração automaticamente. O primeiro cadastro cria a empresa, a conta administrativa e o primeiro ginásio. Na atualização de uma base anterior, os registros existentes são preservados e agrupados na empresa `Empresa migrada`.
 
-Na raiz do projeto, crie/ative o ambiente virtual e instale as dependências:
+## Configuração para desenvolvimento
+
+Instale as dependências e prepare a base local:
 
 ```powershell
-py -3 -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+py -3.14 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe scripts\configurar_sqlite.py
 ```
 
-Para desenvolvimento/testes:
+Use sempre o interpretador dentro de `.venv` para instalar dependências e iniciar a API. Isso evita que o VS Code, o terminal e o Uvicorn usem instalações Python diferentes. Python 3.14 estável é suportado. A preparação da base é feita uma vez e não é repetida pelo script de arranque.
+
+Para confirmar qual interpretador está em uso:
 
 ```powershell
-python -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -c "import sys; print(sys.executable); print(sys.version)"
+.\.venv\Scripts\python.exe -m uvicorn --version
 ```
 
-Se estiver usando um `.env` antigo com PostgreSQL/Supabase, mude a configuração sem mostrar nem apagar o segredo de sessão admin:
+Se o recarregamento automático causar problemas no ambiente local, execute sem `--reload`; isso remove somente o monitor de arquivos, não altera o código da API:
 
 ```powershell
-python scripts/configurar_sqlite.py
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-O configurador seleciona `APP_ENV=development`, remove `DATABASE_URL` e a referência Supabase do `.env`, preserva `ADMIN_TOKEN_SECRET` e copia a base antiga do projeto para o caminho local se ainda não houver uma cópia lá.
+O CORS local já permite `http://127.0.0.1:5500`, `http://localhost:5173`, `http://127.0.0.1:5173`, `http://localhost:3000` e `http://127.0.0.1:3000`. Para outros hosts/portas, configure `FRONTEND_ORIGINS` no `.env` como uma lista separada por vírgulas de origens completas, por exemplo:
 
-Na migração deste workspace, a base ativa foi copiada para LocalAppData com a API nativa de backup do SQLite e validada. O antigo `gym_presence.db` na raiz do workspace foi mantido intacto como cópia de recuperação; a aplicação não o usa mais. Depois de confirmar que a nova localização e os backups estão corretos, essa cópia antiga pode ser removida manualmente.
+```env
+FRONTEND_ORIGINS=http://localhost:5173,https://frontend.exemplo.pt
+```
 
-## 5. Banco e arquivos locais
+Não use `*` em produção. A allowlist autoriza `GET`, `POST`, `PUT`, `PATCH`, `OPTIONS` e os cabeçalhos `Content-Type` e `X-Admin-Token`.
 
-No Windows, o banco ativo fica em:
+### Interface web local
+
+O frontend é uma SPA React/TypeScript. Requer Node.js 20.19+, 22.12+ ou 24+. Instale as dependências uma vez:
 
 ```text
-%LOCALAPPDATA%\GymPresence\gym_presence.db
+cd frontend
+npm install
 ```
 
-No macOS/Linux, fica em:
-
-```text
-~/.local/share/gym-presence/gym_presence.db
-```
-
-Esse local fica fora do workspace sincronizado. O banco contém as tabelas `ginasios`, `planos`, `clientes`, `credenciais`, `presencas` e `contas_admin`. Chaves estrangeiras estão ativas, emails e credenciais têm restrições de unicidade, e um índice parcial impede mais de uma presença aberta por cliente.
-
-`DATABASE_URL` pode apontar para outro arquivo SQLite, se necessário. Caminhos relativos são resolvidos a partir da raiz do projeto. URLs PostgreSQL/Supabase são recusadas por esta configuração SQLite.
-
-O arquivo `.env` guarda `ADMIN_TOKEN_SECRET` e outras configurações locais; ele está ignorado no `.gitignore`. Nunca o inclua em commits, capturas de tela, logs ou mensagens. O arquivo `.env.example` é um modelo, não deve conter segredos reais.
-
-Em `development`, o primeiro arranque cria tabelas e dados de demonstração se a base estiver vazia. Em `test`, cria o schema sem seed. O seed não sobrescreve registros existentes.
-
-## 6. Conta administrativa
-
-Crie a primeira conta uma vez:
+Depois de preparar o backend e instalar as dependências do frontend, inicie ambos a partir da raiz do repositório:
 
 ```powershell
-python scripts/criar_admin.py
+.\.venv\Scripts\python.exe scripts\dev.py
 ```
 
-O email padrão local é `admin@gym.local`. A senha é lida sem eco, precisa ter pelo menos 12 caracteres e é armazenada somente como hash `scrypt`. O segredo HMAC dos tokens é criado em `.env` se ainda não existir. O script bloqueia um segundo bootstrap.
+O comando abre a API em `http://127.0.0.1:8000` e o frontend em `http://127.0.0.1:5173`; prima `Ctrl+C` para encerrar ambos. Em macOS/Linux, execute `python scripts/dev.py` com o ambiente virtual activo. O script prefere automaticamente o interpretador `.venv` e não instala pacotes nem altera a base de dados. Crie a conta em **Criar conta da empresa**; o registo cria atomicamente a empresa, o administrador e o primeiro ginásio. Na aplicação autenticada é possível actualizar o perfil, gerir ginásios e planos, e registar clientes associados a um plano. Os endereços antigos `login.html`, `signup.html`, `clientes.html` e `planos.html` redireccionam para as respectivas páginas da SPA.
 
-A senha `admin` não é aceita: é trivial. Para mudar a senha de uma conta existente:
+Se as portas padrão já estiverem ocupadas, indique alternativas, por exemplo `.\.venv\Scripts\python.exe scripts\dev.py --api-port 8001 --frontend-port 5174`.
 
-```powershell
-python scripts/alterar_senha_admin.py
-```
+Para gerar os ficheiros de produção, execute `npm run build` na pasta `frontend`; o resultado fica em `frontend/dist`. O endereço da API pode ser definido durante o build com `VITE_API_URL`; por omissão, usa `http://127.0.0.1:8000`. A sessão continua apenas enquanto a aplicação está aberta: o token é mantido em memória e não é gravado no navegador; recarregar a página exige novo login, pois a API ainda não oferece renovação de sessão.
 
-Esse comando também lê a senha sem eco. Digite senhas somente nos prompts locais; nunca as envie no chat.
+As fontes Archivo e Source Sans 3 são subconjuntos locais em WOFF2; as licenças OFL ficam em `frontend/public/licenses`. Execute `npm test` e `npm run typecheck` na pasta `frontend` para validar a interface.
 
-### Login
+O projeto usa SQLite local e limita `APP_ENV` a `development` e `test`; esta configuração não é uma implantação multi-instância pronta para produção.
 
-`POST /admin/login` recebe:
+### Experimento de plano de controlo e provisionamento
+
+Há uma primeira fatia isolada da Fase 0 em `app/data/control_plane.py`, `app/data/tenant_databases.py` e `app/services/provisionamento.py`. Ela cria metadados centrais e uma base SQLite separada por empresa, regista estados de provisionamento e permite repetir com segurança o cadastro inicial do proprietário e do ginásio. Os testes usam diretórios temporários.
+
+Este caminho ainda não está ligado às rotas, autenticação ou repositório usado pela aplicação; não altera nem migra `gym_presence.db`. O schema tenant versão 2 contém ginásio, membros da equipa, planos, clientes, assinaturas, credenciais, presenças e auditoria. As restrições garantem um ginásio por empresa, cliente associado a uma assinatura/plano da mesma base, um administrador ativo, referências únicas dentro do tenant, presenças sem eliminação e anulação justificada, e auditoria append-only. Os dados originais da presença não podem ser alterados; o fecho e a anulação são campos separados.
+
+As entradas `dados_antes` e `dados_depois` da auditoria são destinadas a metadados mínimos e redigidos; não devem incluir palavras-passe, tokens, credenciais, NIF, documentos ou telefones em claro. O provisionador recusa bases existentes com versão ou tabelas divergentes: não existe migração automática nesta fatia. Não usar em produção: PostgreSQL, credenciais de privilégio mínimo, migrações versionadas completas e integração com sessões continuam pendentes.
+
+## Convenções HTTP
+
+- Envie e receba JSON com `Content-Type: application/json`.
+- Use os caminhos exatamente como documentados, sem barra final.
+- Datas são ISO 8601. Envie sempre timezone, preferencialmente UTC (`Z` ou `+00:00`).
+- IDs são strings opacas; não os monte no frontend.
+- Coleções são arrays JSON. A API ainda não implementa paginação.
+- Erros FastAPI usam `{ "detail": ... }`; validações `422` podem retornar uma lista estruturada em `detail`.
+
+## Autenticação admin
+
+O cadastro inicial público cria uma empresa, o administrador proprietário e o primeiro ginásio numa única transação. Depois disso, faça `POST /admin/login` com o email administrativo e a palavra-passe escolhidos no cadastro:
 
 ```json
 {
-  "email": "admin@gym.local",
-  "password": "a-sua-senha-local"
+  "email": "administrador@example.com",
+  "password": "palavra-passe-definida-no-cadastro"
 }
 ```
 
-Resposta:
+Resposta `200`:
 
 ```json
 {
@@ -122,42 +112,128 @@ Resposta:
 }
 ```
 
-Envie o token de `access_token` no cabeçalho `X-Admin-Token` das rotas marcadas como Admin. O token expira em uma hora. Senha errada, token ausente, inválido ou expirado retorna `401`.
+Envie `access_token` no cabeçalho `X-Admin-Token` nas rotas admin:
 
-## 7. Executar e verificar
-
-```powershell
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```http
+X-Admin-Token: <access_token>
 ```
 
-- Swagger: `http://127.0.0.1:8000/docs`
-- OpenAPI: `http://127.0.0.1:8000/openapi.json`
-- Health do processo: `http://127.0.0.1:8000/health/live`
-- Health do banco: `http://127.0.0.1:8000/health/ready`
+O token expira em uma hora. Não há refresh token nem endpoint de logout: descarte o token no cliente ao sair ou receber `401` e solicite novo login. Como o backend usa um token próprio, não envie `Authorization: Bearer`; o cabeçalho esperado é `X-Admin-Token`.
 
-Interrompa o servidor no terminal com `Ctrl+C`.
+Recomendação para o frontend: mantenha o token em memória da aplicação. Evite `localStorage`/`sessionStorage` se não forem necessários, nunca registre o token em logs e não o coloque na URL. Login inválido retorna `401` com `detail: "Email ou senha inválidos."`.
 
-## 8. Endpoints
+### Exemplo TypeScript
 
-| Método | Caminho | Acesso | Descrição |
-| --- | --- | --- | --- |
-| `GET` | `/health/live` | Público | Confirma que o processo HTTP está ativo. |
-| `GET` | `/health/ready` | Público | Confirma conexão SQLite e existência das tabelas. |
-| `POST` | `/admin/login` | Público | Autentica a conta admin e emite token. |
-| `GET` | `/ginasios` | Público | Lista ginásios. |
-| `POST` | `/ginasios` | Admin | Cria ginásio. |
-| `GET` | `/planos` | Público | Lista planos. |
-| `GET` | `/planos/{plano_id}` | Público | Consulta plano. |
-| `POST` | `/planos` | Admin | Cria plano. |
-| `PUT` | `/planos/{plano_id}` | Admin | Substitui as regras do plano. |
-| `GET` | `/clientes` | Admin | Lista clientes. |
-| `GET` | `/clientes/{cliente_id}` | Admin | Consulta cliente, plano e uso. |
-| `POST` | `/clientes` | Admin | Regista cliente e credenciais. |
-| `PATCH` | `/clientes/{cliente_id}/assinatura` | Admin | Altera plano e/ou datas. |
-| `POST` | `/presencas/marcar` | Público | Marca entrada ou saída por credencial. |
-| `GET` | `/presencas` | Admin | Lista histórico de presenças. |
+```ts
+const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
 
-### Criar plano
+type AdminSession = {
+  access_token: string;
+  token_type: "bearer";
+  expires_in: number;
+};
+
+async function login(email: string, password: string): Promise<AdminSession> {
+  const response = await fetch(`${API_URL}/admin/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!response.ok) throw await readApiError(response);
+  return response.json();
+}
+
+async function adminFetch<T>(
+  path: string,
+  token: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Admin-Token": token,
+      ...init.headers,
+    },
+  });
+  if (!response.ok) throw await readApiError(response);
+  return response.json();
+}
+
+async function readApiError(response: Response) {
+  const body = await response.json().catch(() => ({}));
+  return new Error(body.detail ?? `Falha HTTP ${response.status}`);
+}
+```
+
+`adminFetch` é para rotas protegidas, incluindo a marcação manual de presença. O cadastro da empresa, o login e os endpoints de saúde são públicos; os restantes dados são privados ao tenant do token. Não defina `credentials: "include"`; a autenticação usa token em header, não cookie.
+
+## Endpoints e autorização
+
+| Método | Caminho | Auth | Sucesso | Uso |
+| --- | --- | --- | --- | --- |
+| `GET` | `/health/live` | Pública | `200` | Processo HTTP ativo. |
+| `GET` | `/health/ready` | Pública | `200` | SQLite acessível e schema completo. |
+| `POST` | `/admin/register` | Pública | `201` | Criar empresa, primeiro administrador e primeiro ginásio. |
+| `POST` | `/admin/login` | Pública | `200` | Login e emissão de token. |
+| `GET` | `/empresa` | Admin | `200` | Consultar o perfil da empresa do token. |
+| `PATCH` | `/empresa` | Admin | `200` | Atualizar o perfil da empresa do token. |
+| `GET` | `/ginasios` | Admin | `200` | Listar somente os ginásios da empresa. |
+| `POST` | `/ginasios` | Admin | `201` | Criar ginásio. |
+| `GET` | `/planos` | Admin | `200` | Listar somente os planos da empresa. |
+| `GET` | `/planos/{plano_id}` | Admin | `200` | Consultar plano da empresa. |
+| `POST` | `/planos` | Admin | `201` | Criar plano. |
+| `PUT` | `/planos/{plano_id}` | Admin | `200` | Substituir regras completas do plano. |
+| `GET` | `/clientes` | Admin | `200` | Listar clientes. |
+| `GET` | `/clientes/{cliente_id}` | Admin | `200` | Cliente, plano e uso. |
+| `POST` | `/clientes` | Admin | `201` | Registar cliente e credenciais. |
+| `PATCH` | `/clientes/{cliente_id}/assinatura` | Admin | `200` | Atualizar campos de assinatura enviados. |
+| `POST` | `/presencas/marcar` | Admin | `200` | Marcar entrada ou saída por credencial no ginásio da empresa autenticada. |
+| `GET` | `/presencas` | Admin | `200` | Consultar histórico. |
+
+## Tipos e payloads
+
+### Cadastro inicial da empresa
+
+`POST /admin/register` cria o tenant, a conta do administrador e o primeiro ginásio. O email administrativo deve ser único na plataforma; a palavra-passe precisa ter pelo menos 12 caracteres.
+
+```json
+{
+  "empresa": {
+    "nome": "Ginásio Exemplo, Lda.",
+    "email": "contacto@example.com",
+    "telefone": "210000000",
+    "endereco": "Rua Principal, 10"
+  },
+  "administrador": {
+    "email": "admin@example.com",
+    "password": "uma-palavra-passe-forte"
+  },
+  "ginasio": {
+    "nome": "Unidade Centro",
+    "endereco": "Rua Principal, 10"
+  }
+}
+```
+
+A resposta inclui os dados criados e um token administrativo. A interface web não persiste o token entre páginas; depois do cadastro, entre com as mesmas credenciais. `GET/PATCH /empresa` só lê ou altera o perfil associado ao token.
+
+### Ginásio
+
+`POST /ginasios` exige autenticação administrativa e associa o ginásio à empresa do token:
+
+```json
+{
+  "nome": "Ginásio Centro",
+  "endereco": "Av. Principal, 100"
+}
+```
+
+Resposta: `{ "id": "gym-...", "nome": "Ginásio Centro", "endereco": "Av. Principal, 100" }`.
+
+### Plano
+
+`POST /planos` e `PUT /planos/{plano_id}` usam:
 
 ```json
 {
@@ -174,9 +250,24 @@ Interrompa o servidor no terminal com `Ctrl+C`.
 }
 ```
 
-`dias_semana`: `0` = segunda-feira até `6` = domingo. Limites e horários aceitam `null`; `ginasios_permitidos: []` significa sem restrição de ginásio. `PUT` substitui a representação completa do plano.
+| Campo | Tipo | Regra |
+| --- | --- | --- |
+| `id` | string | Só na resposta; gerado pelo backend. |
+| `nome` | string | Obrigatório, entre 1 e 100 caracteres. |
+| `descricao` | string | Opcional; padrão `""`. |
+| `max_visitas_semana` | integer ou `null` | Inteiro >= 0; `null` não impõe limite. |
+| `max_visitas_mes` | integer ou `null` | Inteiro >= 0; `null` não impõe limite. |
+| `hora_inicio`, `hora_fim` | hora `HH:MM:SS` ou `null` | Se ambas existirem, início < fim. |
+| `dias_semana` | array de inteiros | Únicos, de 0 (segunda) a 6 (domingo). |
+| `duracao_maxima_minutos` | integer ou `null` | Maior que zero ou sem limite (`null`). |
+| `ginasios_permitidos` | array de strings | Um ou mais IDs de ginásios pertencentes à empresa autenticada; IDs externos e lista vazia são rejeitados. |
+| `ativo` | boolean | Padrão `true`. |
 
-### Registar cliente
+`PUT` substitui a representação inteira; campos omitidos voltam aos padrões do schema. `PATCH` não é usado para edição de plano.
+
+### Cliente
+
+`POST /clientes`:
 
 ```json
 {
@@ -184,26 +275,64 @@ Interrompa o servidor no terminal com `Ctrl+C`.
   "email": "ana@example.com",
   "telefone": "910000000",
   "plano_id": "plano-basico",
-  "assinatura_inicio": "2026-10-10T00:00:00+00:00",
-  "assinatura_fim": "2026-11-10T00:00:00+00:00",
-  "credenciais": [{"metodo": "cartao", "codigo": "CARD-ANA-001"}]
+  "assinatura_inicio": "2026-10-10T00:00:00Z",
+  "assinatura_fim": "2026-11-10T00:00:00Z",
+  "credenciais": [
+    { "metodo": "cartao", "codigo": "CARD-ANA-001" }
+  ]
 }
 ```
 
-Email é normalizado para minúsculas. Plano deve existir; email e par método/código da credencial são únicos. Datas precisam usar o mesmo padrão de fuso e o início precisa anteceder o fim.
+| Campo | Tipo | Regra |
+| --- | --- | --- |
+| `id` | string | Só na resposta; gerado pelo backend. |
+| `nome` | string | Obrigatório, entre 1 e 120 caracteres. |
+| `email` | string | Obrigatório, formato de email; normalizado para minúsculas. |
+| `telefone` | string | Opcional; padrão `""`. |
+| `plano_id` | string | Obrigatório; plano ativo pertencente à empresa e associado a pelo menos um ginásio. |
+| `assinatura_inicio`, `assinatura_fim` | datetime ISO 8601 | Mesmo padrão de timezone; início < fim. |
+| `credenciais` | array | Cada item tem `metodo` e `codigo`; padrão `[]`. |
+| `ativo` | boolean | Só na resposta; padrão `true`. |
 
-### Personalizar assinatura
+Métodos de credencial aceitos: `biometria`, `face`, `cartao`, `pin` e `qr`. Emails e pares (`metodo`, `codigo`) são únicos dentro de cada empresa; empresas distintas podem usar os mesmos valores.
 
-`PATCH /clientes/{cliente_id}/assinatura` aceita apenas os campos que mudam:
+Resposta de `GET /clientes/{cliente_id}` inclui o cliente mais:
+
+```json
+{
+  "plano": { "id": "plano-basico", "nome": "Básico" },
+  "uso_plano": {
+    "visitas_semana": 1,
+    "max_visitas_semana": 3,
+    "restantes_semana": 2,
+    "visitas_mes": 2,
+    "max_visitas_mes": 12,
+    "restantes_mes": 10,
+    "horario": { "inicio": "08:00", "fim": "18:00" },
+    "dias_semana": [0, 1, 2, 3, 4, 5],
+    "duracao_maxima_minutos": 90
+  }
+}
+```
+
+Os números acima são ilustrativos; `null` em máximo/restantes significa sem limite.
+
+### Atualizar assinatura
+
+`PATCH /clientes/{cliente_id}/assinatura` aceita um ou mais campos:
 
 ```json
 {
   "plano_id": "plano-premium",
-  "assinatura_fim": "2027-10-10T00:00:00+00:00"
+  "assinatura_fim": "2027-10-10T00:00:00Z"
 }
 ```
 
-### Marcar presença
+Campos não enviados são preservados. Enviar `{}` retorna `422`. A API valida novamente plano e intervalo final resultante.
+
+### Presença
+
+`POST /presencas/marcar`:
 
 ```json
 {
@@ -214,58 +343,77 @@ Email é normalizado para minúsculas. Plano deve existir; email e par método/c
 }
 ```
 
-Métodos aceitos: `biometria`, `face`, `cartao`, `pin`, `qr`. `tipo` aceita `entrada`, `saida` ou pode ser omitido para alternar conforme exista uma presença aberta.
+Envie também o cabeçalho `X-Admin-Token` da sessão administrativa. O ginásio tem de pertencer à empresa dessa sessão; um ginásio de outra empresa responde `404`. Não envie `empresa_id`: o servidor obtém o tenant exclusivamente da sessão. A entrada pública de eventos de dispositivos ainda não está implementada.
 
-## 9. Regras de acesso
+`tipo` aceita `entrada`, `saida` ou `null`/omitido. Sem `tipo`, a API fecha uma presença aberta; se não houver, tenta abrir entrada. A resposta de entrada informa `autorizado`, `tipo`, mensagem, cliente, plano, ginásio, método, `entrada_em` e `uso_plano`. A resposta de saída inclui também `saida_em`, `duracao_minutos` e `aviso`.
 
-Uma entrada só é permitida se cliente e plano estiverem ativos, a assinatura estiver vigente, o ginásio/dia/horário forem permitidos, não houver outra entrada aberta e os limites de visita não tiverem sido atingidos. Sem limites semanais/mensais (`null`), não há restrição correspondente.
+## Fluxo recomendado para o frontend
 
-A semana de contagem começa na segunda-feira e o mês é de calendário. A saída fecha a presença aberta e devolve duração e eventual aviso de tempo acima do plano. Uma sessão não pode ser aberta duas vezes para o mesmo cliente, inclusive em pedidos concorrentes.
+1. Criar a empresa, o administrador e o primeiro ginásio em `POST /admin/register` ou na interface web.
+2. Fazer login em `POST /admin/login` e manter `access_token` em memória.
+3. Consultar/atualizar `GET/PATCH /empresa`; gerir ginásios e planos usando o token administrativo.
+4. Enviar `X-Admin-Token` nas rotas de empresa, ginásios, planos, clientes, histórico e marcação manual de presença.
+5. Tratar `401` descartando o token e solicitando login novamente. Rotas administrativas de outra empresa respondem como não encontradas.
+6. Para marcar uma presença manualmente, chamar `POST /presencas/marcar`; a sessão determina a empresa e o servidor confirma que o ginásio pertence a ela.
 
-## 10. Códigos HTTP
+Não há refresh token, logout remoto, paginação ou filtros de listagem. O token expira em uma hora. `scripts/criar_admin.py` também permite provisionar localmente uma empresa, seu administrador e o primeiro ginásio; se houver registros anteriores migrados, o script também pode adicionar um administrador à empresa `Empresa migrada`.
 
-- `200`: operação concluída.
+## Erros e códigos HTTP
+
+Formato geral:
+
+```json
+{ "detail": "Email já registado" }
+```
+
+- `200`: leitura ou atualização concluída.
 - `201`: ginásio, plano ou cliente criado.
-- `401`: credenciais admin ou token inválidos/ausentes/expirados.
-- `403`: acesso negado por regra de cliente/plano/presença.
-- `404`: cliente, plano ou ginásio não encontrado.
+- `401`: login inválido ou token admin ausente/inválido/expirado.
+- `403`: regra de acesso ao cliente/plano/presença negou a operação.
+- `404`: ginásio, plano ou cliente não encontrado.
 - `409`: email, credencial ou registro duplicado.
-- `422`: conteúdo inválido ou datas inconsistentes.
-- `503`: SQLite ou schema indisponível.
+- `422`: validação do corpo/datas falhou; `detail` pode ser array de erros Pydantic.
+- `503`: SQLite indisponível, schema incompleto ou segredo de sessão ausente.
 
-## 11. Testes
+Erros de rede/CORS não retornam JSON de aplicação; confira `FRONTEND_ORIGINS`, protocolo, host e porta configurados.
+
+## Regras de negócio de presença
+
+- Cliente e plano precisam estar ativos e a assinatura vigente.
+- O plano pode restringir ginásios, dias, horário, duração e visitas semanais/mensais.
+- A semana começa na segunda-feira; o mês é calendário.
+- Não pode haver duas entradas abertas do mesmo cliente, inclusive em pedidos concorrentes.
+- A saída fecha a presença e devolve a duração da sessão.
+- `GET /presencas` contém dados pessoais e exige token admin.
+
+## Testes
 
 ```powershell
 python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-Os testes usam SQLite em memória e cobrem health checks, login, proteção admin, cadastro, duplicidade, alteração parcial de assinatura e ciclo de presença. Não modificam a base local real.
+A suíte usa SQLite em memória e cobre health, login, autorização, cadastro, duplicidade, assinatura e ciclo de presença. Não altera `gym_presence.db`.
 
-## 12. Backup e restauração
+## Backup e restauração
 
-Crie backup consistente sem parar a API:
+Crie backup consistente sem interromper a API:
 
 ```powershell
 python scripts/backup_sqlite.py
 ```
 
-O arquivo é salvo em `%LOCALAPPDATA%\GymPresence\backups` e passa por `PRAGMA integrity_check`. Backups contêm dados pessoais e referências de credenciais: proteja o diretório e mantenha retenção limitada.
+Os backups ficam em `%LOCALAPPDATA%\GymPresence\backups` e passam por `PRAGMA integrity_check`. Proteja-os como dados pessoais e defina retenção.
 
-Para restaurar um backup:
+Para restaurar: pare a API; preserve o banco atual se necessário; copie o arquivo de backup para `%LOCALAPPDATA%\GymPresence\gym_presence.db`; reinicie a API e verifique `/health/ready`. Não apague o banco para zerar dados sem antes fazer backup.
 
-1. Pare a API com `Ctrl+C`.
-2. Faça uma cópia do banco atual para uma pasta segura, se precisar preservá-lo.
-3. Copie o arquivo escolhido de `%LOCALAPPDATA%\GymPresence\backups` para `%LOCALAPPDATA%\GymPresence\gym_presence.db`.
-4. Reinicie a API e confirme `/health/ready`.
+## Segurança e limitações
 
-Não apague o banco para “reiniciar” o sistema: isso remove clientes, administradores, planos e histórico.
-
-## 13. Segurança e operação
-
-- Esta configuração SQLite é local/single-server; não exponha diretamente à internet nem execute várias instâncias escrevendo no mesmo arquivo.
-- Use senha admin forte, mantenha `.env` privado e faça backups protegidos.
-- O token admin não tem rate limit embutido; se a API for exposta numa rede, use proxy autenticado/firewall e limite de tentativas.
-- Os clientes e credenciais de demonstração só são inseridos em `development` numa base vazia.
-- Não use PIN simples nem dados biométricos reais neste protótipo. Armazene referências de credencial, não imagens, templates biométricos ou segredos em claro.
-- A API não se conecta ao projeto Supabase anterior. O vínculo local e a URL remota foram removidos do `.env`; o projeto remoto na conta Supabase não é apagado automaticamente.
+- `.env` contém o segredo HMAC e nunca deve ser versionado ou enviado ao frontend.
+- Use `X-Admin-Token` somente em HTTPS fora do desenvolvimento local; token em memória reduz exposição a XSS comparado a `localStorage`.
+- CORS permite apenas `FRONTEND_ORIGINS`; não use wildcard. Atualize essa variável para a origem do frontend implantado.
+- O backend não limita tentativas de login; se houver exposição de rede, use um proxy/firewall com rate limit.
+- O cadastro público não valida email nem limita tentativas. Não exponha o endpoint de cadastro à internet em produção sem adicionar verificação, rate limiting e proteção contra abuso.
+- SQLite é local e single-server, sem failover/backup gerenciado. Para operação multi-instância, faça uma migração arquitetural para banco servidor.
+- Não use PIN simples nem armazene imagens ou templates biométricos reais neste protótipo.
+- O projeto Supabase criado anteriormente não está conectado nem é apagado por esta configuração SQLite. Confira a conta Supabase separadamente se quiser removê-lo.

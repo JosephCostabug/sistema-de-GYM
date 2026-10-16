@@ -25,10 +25,20 @@ def main() -> None:
 
     linhas = ENV_FILE.read_text(encoding="utf-8").splitlines() if ENV_FILE.exists() else []
     segredo_admin = next(
-        (linha for linha in linhas if linha.startswith("ADMIN_TOKEN_SECRET=")),
+        (
+            linha
+            for linha in linhas
+            if linha.startswith("ADMIN_TOKEN_SECRET=")
+            and linha.partition("=")[2].strip()
+        ),
         None,
     )
-    linhas = [linha for linha in linhas if not linha.startswith(VARIAVEIS_REMOVIDAS)]
+    linhas = [
+        linha
+        for linha in linhas
+        if not linha.startswith(VARIAVEIS_REMOVIDAS)
+        and not linha.startswith("ADMIN_TOKEN_SECRET=")
+    ]
     linhas.extend(
         [
             "APP_ENV=development",
